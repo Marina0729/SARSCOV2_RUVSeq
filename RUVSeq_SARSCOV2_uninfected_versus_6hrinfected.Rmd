@@ -223,6 +223,8 @@ colors <- brewer.pal(3, "Set2")
 plotRLE(set_TE, outline=FALSE, ylim=c(-0.5, 0.5), col=colors[x_TE], cex.lab = 0.2)
 plotPCA(set_TE, col=colors[x_mRNA], cex=1)
 #can't make a PCA using non-integer counts
+
+
 ```
 
 ```{r  Obtaining RPK values for modelling}
@@ -294,7 +296,7 @@ plotPCA(set1_RPK, col=colors[x_RPK], cex=1)
 
 ```
 
-```{r Differential gene expression analysis for PRK counts}
+```{r Differential gene expression analysis for ribosome RPK counts}
 
 design <- model.matrix(~x_RPK + W_1, data=pData(set1_RPK))
 y <- DGEList(counts=counts(set1_RPK), group=x_RPK)
@@ -314,4 +316,49 @@ logFC_RPK$table %>%
 
 ```
 
+```{r Calculating TE using RPK of ribosome footprints over RPK of mRNA}
+
+#Normalization by RUV works to account for variation represented in the replicates therefore we don't want normalize to library size i.e. use RPK instead of RPKM before using edgeR
+
+TE_lesslibsize.norm <- RF_mRNA_raw_host %>%
+  dplyr::select(-Chr) %>% 
+  gather(sample, counts, -Geneid, -Length) %>% 
+  mutate(RPK = (counts/Length)*1000) %>%
+  dplyr::select(Geneid, sample, RPK) %>% 
+  spread(sample, RPK) %>% 
+  mutate(TEraw_s1 = RF_CDS_s1/mRNA_CDS_s1,
+         TEraw_s2 = RF_CDS_s2/mRNA_CDS_s2,
+         TEraw_s3 = RF_CDS_s3/mRNA_CDS_s3,
+         TEraw_s4 = RF_CDS_s4/mRNA_CDS_s4,
+         TEraw_s5 = RF_CDS_s5/mRNA_CDS_s5,
+         TEraw_s6 = RF_CDS_s6/mRNA_CDS_s6,
+         TEraw_s7 = RF_CDS_s7/mRNA_CDS_s7,
+         TEraw_s8 = RF_CDS_s8/mRNA_CDS_s8,
+         TEraw_s9 = RF_CDS_s9/mRNA_CDS_s9) %>% 
+  dplyr::select(Geneid,TEraw_s1,TEraw_s3,TEraw_s4,TEraw_s5,TEraw_s6,TEraw_s7,TEraw_s8,TEraw_s9)
+
+
+#Problem that TEraw values are non-integer and rounding would be too much manipulation
+
+```
+```{r  introducing mRNA counts as an offset value in the GLM}
+
+#want to create a gene level generalized linear model for the ribosome counts with mRNA abundance (TPM) considered as offset with coefficient set to 1
+
+mRNA_RPK <- RF_mRNA_raw_host %>%
+  dplyr::select(-Chr) %>% 
+  gather(sample, counts, -Geneid, -Length) %>% 
+  mutate(RPK = (counts/Length)*1000) %>%
+  dplyr::select(Geneid, sample, RPK) %>% 
+  spread(sample, RPK) %>% 
+  dplyr::select(Geneid,mRNA_CDS_s1,mRNA_CDS_s2,mRNA_CDS_s3,mRNA_CDS_s4,mRNA_CDS_s5,mRNA_CDS_s6,mRNA_CDS_s7,mRNA_CDS_s8,mRNA_CDS_s9)
+
+RPK_lib_size <- mRNA_RPK %>%
+  gather(sample, RPK_counts, -Geneid) %>% 
+  group_by(sample) %>% 
+  summarise(lib_size = sum(RPK_counts))
+
+
+
+```
 
