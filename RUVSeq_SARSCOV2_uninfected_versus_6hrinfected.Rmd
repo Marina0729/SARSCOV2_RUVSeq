@@ -1,0 +1,206 @@
+---
+title: "RUVSeq_SARSCOV2_uninfected_versus_6hrinfected"
+author: "Marina Alexander"
+date: "21/10/2020"
+output:
+  pdf_document: default
+  html_document:
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+
+# remind R where to look for libraries
+.libPaths(c("C:/Users/ale097/Data School/Packages"))
+# load libraries
+library(dplyr)
+library(tidyverse)
+library(knitr)
+library(RUVSeq)
+library(RColorBrewer)
+
+
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.align = 'center'
+)
+```
+
+```{r unnormalized counts for mRNA}
+
+#read in the data
+mRNA_raw <- read.csv("data/mRNA_CDS_counts.csv")
+
+#remove the viral genes from the analysis 
+mRNA_raw_host <- mRNA_raw %>%
+  dplyr::select(-X) %>% 
+  filter(str_detect(Geneid, "ENSG"))
+
+#subset the data for uninfected versus infected 6 hr comparison
+mRNA_raw_host_early_infection <- mRNA_raw_host %>% 
+  dplyr::select(-mRNA_CDS_s7, -mRNA_CDS_s8, -mRNA_CDS_s9)
+
+#change sample names to include condition
+mRNA_raw_host_early_infection_rename <- mRNA_raw_host_early_infection %>% 
+  dplyr::rename(mock.1= mRNA_CDS_s1, mock.2 = mRNA_CDS_s2, 
+                mock.3 =mRNA_CDS_s3, infect6h.4= mRNA_CDS_s4, 
+                infect6h.5 = mRNA_CDS_s5, infect6h.6 =mRNA_CDS_s6)
+
+#convert to count matrix
+mRNA_raw_host_early_infection_matrix <- mRNA_raw_host_early_infection_rename %>% 
+  dplyr::select(-Chr, -Length) %>% 
+  column_to_rownames("Geneid") %>% 
+  as.matrix()
+
+```
+
+```{r unnormalized counts for TE}
+#read in the data
+RF_mRNA_raw <- read.csv("data/RF_mRNA_raw_counts.csv")
+
+#remove the viral genes from the analysis 
+RF_mRNA_raw_host <- RF_mRNA_raw %>%
+  dplyr::select(-X) %>% 
+  filter(str_detect(Geneid, "ENSG"))
+
+#obtain library size for filtering
+lib_size <- RF_mRNA_raw_host %>%
+  filter(RF_CDS_s1>0,RF_CDS_s2>0, RF_CDS_s3>0, RF_CDS_s4>0, RF_CDS_s5>0, RF_CDS_s6>0, RF_CDS_s7>0,
+         RF_CDS_s8>0, RF_CDS_s9>0) %>%
+  dplyr::select(Geneid, Length,RF_CDS_s1, RF_CDS_s2, RF_CDS_s3, RF_CDS_s4, RF_CDS_s5, RF_CDS_s6,
+                RF_CDS_s7, RF_CDS_s8, RF_CDS_s9) %>% 
+  gather(sample, RF_counts, -Geneid, -Length) %>% 
+  group_by(sample) %>% 
+  summarise(lib_size = sum(RF_counts))
+
+#filtering genes with RPKM >5
+RF_raw_host_filtered <- RF_mRNA_raw_host %>%
+  filter(RF_CDS_s1>0|RF_CDS_s2>0| RF_CDS_s3>0| RF_CDS_s4>0| RF_CDS_s5>0| RF_CDS_s6>0|RF_CDS_s7>0|
+         RF_CDS_s8>0| RF_CDS_s9>0) %>%
+  dplyr::select(Geneid, Length,RF_CDS_s1, RF_CDS_s2, RF_CDS_s3, RF_CDS_s4, RF_CDS_s5, RF_CDS_s6,
+                RF_CDS_s7, RF_CDS_s8, RF_CDS_s9) %>% 
+  gather(sample, RF_counts, -Geneid, -Length) %>% 
+  mutate(RPK = (RF_counts/Length)*1000) %>%
+  left_join(lib_size, by = "sample") %>% 
+  mutate(RPKM = (RPK/lib_size)*1000000) %>% 
+  filter(RPKM >5) %>% 
+  dplyr::select(Geneid, sample, RF_counts) %>% 
+  spread(sample, RF_counts)
+dim(RF_raw_host_filtered)
+#9,605 genes are actively translated
+
+#join RF back with mRNA counts
+mRNA_raw_host <- RF_mRNA_raw_host %>% 
+  dplyr::select(Geneid,mRNA_CDS_s1, mRNA_CDS_s2, mRNA_CDS_s3, mRNA_CDS_s4, mRNA_CDS_s5,
+                mRNA_CDS_s6, mRNA_CDS_s7, mRNA_CDS_s8, mRNA_CDS_s9)
+
+RF_mRNA_raw_host_filtered <- RF_raw_host_filtered %>% 
+  left_join(mRNA_raw_host, by = "Geneid")
+
+#convert RF_mRNA to TE
+TE_raw_host_filtered <- RF_mRNA_raw_host_filtered %>% 
+  mutate(TE_CDS_s1 =RF_CDS_s1/mRNA_CDS_s1) %>% 
+  mutate(TE_CDS_s2 =RF_CDS_s1/mRNA_CDS_s2) %>% 
+  mutate(TE_CDS_s3 =RF_CDS_s1/mRNA_CDS_s3) %>% 
+  mutate(TE_CDS_s4 =RF_CDS_s1/mRNA_CDS_s4) %>% 
+  mutate(TE_CDS_s5 =RF_CDS_s1/mRNA_CDS_s5) %>% 
+  mutate(TE_CDS_s6 =RF_CDS_s1/mRNA_CDS_s6) %>% 
+  mutate(TE_CDS_s7 =RF_CDS_s1/mRNA_CDS_s7) %>% 
+  mutate(TE_CDS_s8 =RF_CDS_s1/mRNA_CDS_s8) %>% 
+  mutate(TE_CDS_s9 =RF_CDS_s1/mRNA_CDS_s9) %>% 
+  dplyr::select(Geneid,TE_CDS_s1, TE_CDS_s2, 
+                TE_CDS_s3, TE_CDS_s4, TE_CDS_s5, TE_CDS_s6, 
+                TE_CDS_s7, TE_CDS_s8, TE_CDS_s9)
+
+#subset the data for uninfected versus infected 6 hr comparison
+TE_raw_host_early_infection <- TE_raw_host_filtered %>% 
+  dplyr::select(-TE_CDS_s7, -TE_CDS_s8, -TE_CDS_s9)
+
+#change sample names to include condition
+TE_raw_host_early_infection_rename <- TE_raw_host_early_infection %>%
+  dplyr::rename(mock.1= TE_CDS_s1, mock.2 = TE_CDS_s2, 
+                mock.3 =TE_CDS_s3, infect6h.4= TE_CDS_s4, 
+                infect6hr.5 = TE_CDS_s5, infect6hr.6 =TE_CDS_s6) %>% 
+  filter(mock.1 != "NA")
+
+#convert to count matrix
+TE_raw_host_early_infection_matrix <- TE_raw_host_early_infection_rename %>%
+  column_to_rownames("Geneid") %>% 
+  as.matrix()
+
+```
+
+```{r extracting list of mitochondrial genes for determining unwanted variation}
+
+#mito mRNAs are derived from the cytoplasm (see ref below) thus should be resistant to nsp1-directed host shut down
+#Lokugamage KG, Narayanan K, Nakagawa K, Terasaki K, Ramirez SI, Tseng CT, Makino S. Middle East Respiratory Syndrome Coronavirus nsp1 Inhibits Host Gene Expression by Selectively Targeting mRNAs Transcribed in the Nucleus while Sparing mRNAs of Cytoplasmic Origin. J Virol. 2015 Nov;89(21):10970-81. doi: 10.1128/JVI.01352-15. Epub 2015 Aug 26. PMID: 26311885; PMCID: PMC4621111.
+
+#note that all mito genes are highly expressed so no need for filtering
+mito_genes <- RF_mRNA_raw_host %>% 
+  filter(Chr == "chrM") %>% 
+  dplyr::select(Geneid) 
+
+```
+
+
+```{r extracting list of actively transcribed protein coding genes (mRNA)}
+
+#filter out genes by requiring more than 5 reads in at least two samples for each gene.
+filter_mRNA_early_infection <- apply(mRNA_raw_host_early_infection_matrix, 1, function(x) length(x[x>5])>=2)
+filtered_mRNA_early_infection <- mRNA_raw_host_early_infection_matrix[filter_mRNA_early_infection,]
+transcribed_genes_early_infection <- rownames(filtered_mRNA_early_infection)[grep("^ENS", rownames(filtered_mRNA_early_infection))]
+
+toMatch <- mito_genes$Geneid
+mito_genes_chrV <- rownames(filtered_mRNA_early_infection)[grep(paste(toMatch, collapse="|"), rownames(filtered_mRNA_early_infection))]
+
+#Count the number of genes
+length(transcribed_genes_early_infection)
+# 13,031 genes are actively transcribed
+
+```
+
+
+```{r  exploring variation in unnormalized mRNA count data}
+
+#Store the data in an object of S4 class SeqExpressionset from the EDAsEQ package so that normalization can be visualized
+x_mRNA <- as.factor(rep(c("mock", "infect.6h"), each =3))
+set_mRNA <- newSeqExpressionSet(as.matrix(filtered_mRNA_early_infection),
+                           phenoData = data.frame(x_mRNA, row.names=colnames(filtered_mRNA_early_infection)))
+
+colors <- brewer.pal(3, "Set2")
+plotRLE(set_mRNA, outline=FALSE, ylim=c(-4, 4), col=colors[x_mRNA], cex.lab = 0.2)
+plotPCA(set_mRNA, col=colors[x_mRNA], cex=1)
+
+```
+
+```{r  exploring variation in UQ normalized mRNA count data}
+
+#Normalizing the data using upper-quartile (UQ) normalization
+set_mRNA <- betweenLaneNormalization(set_mRNA, which = "upper")
+plotRLE(set_mRNA, outline=FALSE, ylim=c(-4, 4), col=colors[x_mRNA])
+plotPCA(set_mRNA, col=colors[x_mRNA], cex=1)
+
+```
+
+```{r  exploring variation in RUV normalized mRNA count data}
+
+#To estimate the factors of unwanted variation, we are using mito genes as negative control genes. Assuming theyr are not affected by SARSCOV2 infection
+class(set_mRNA)
+class(mito_genes_chrV)
+class(transcribed_genes_early_infection)
+
+set1_mRNA <- RUVg(set_mRNA,mito_genes_chrV, k=1 )
+pData(set1_mRNA)
+
+plotRLE(set1_mRNA, outline=FALSE, ylim=c(-4,4),col=colors[x_mRNA])
+plotPCA(set1_mRNA, col=colors[x_mRNA], cex=1)
+
+```
+```{r exploring variation in median normalized mRNA count data}
+
+
+
+```
+
