@@ -200,7 +200,118 @@ plotPCA(set1_mRNA, col=colors[x_mRNA], cex=1)
 ```
 ```{r exploring variation in median normalized mRNA count data}
 
+#Normalizing the data using upper-quartile (UQ) normalization
+set_mRNA <- betweenLaneNormalization(set_mRNA, which = "median")
+plotRLE(set_mRNA, outline=FALSE, ylim=c(-4, 4), col=colors[x_mRNA])
+plotPCA(set_mRNA, col=colors[x_mRNA], cex=1)
+
+```
+
+
+```{r setting the TE count data into object for analysis }
+
+#8726 genes actively translated
+translated_genes_early_infection <- rownames(TE_raw_host_early_infection_matrix)[grep("^ENS", rownames(TE_raw_host_early_infection_matrix))]
+length(translated_genes_early_infection)
+
+#Store the data in an object of S4 class SeqExpressionset from the EDAsEQ package so that normalization can be visualized
+x_TE <- as.factor(rep(c("mock", "infect.6h"), each =3))
+set_TE <- newSeqExpressionSet(as.matrix(TE_raw_host_early_infection_matrix),
+                           phenoData = data.frame(x_TE, row.names=colnames(TE_raw_host_early_infection_matrix)))
+
+colors <- brewer.pal(3, "Set2")
+plotRLE(set_TE, outline=FALSE, ylim=c(-0.5, 0.5), col=colors[x_TE], cex.lab = 0.2)
+plotPCA(set_TE, col=colors[x_mRNA], cex=1)
+#can't make a PCA using non-integer counts
+```
+
+```{r  Obtaining RPK values for modelling}
+
+RPK <- RF_mRNA_raw_host %>%
+  filter(RF_CDS_s1>0|RF_CDS_s2>0| RF_CDS_s3>0| RF_CDS_s4>0| RF_CDS_s5>0| RF_CDS_s6>0|RF_CDS_s7>0|
+         RF_CDS_s8>0| RF_CDS_s9>0) %>%
+  dplyr::select(Geneid, Length,RF_CDS_s1, RF_CDS_s2, RF_CDS_s3, RF_CDS_s4, RF_CDS_s5, RF_CDS_s6,
+                RF_CDS_s7, RF_CDS_s8, RF_CDS_s9) %>% 
+  gather(sample, RF_counts, -Geneid, -Length) %>% 
+  mutate(RPK = (RF_counts/Length)*1000) %>% 
+  filter(RPK >10) %>%
+  mutate(RPK = round(RPK, digits = 0)) %>% 
+  dplyr::select(Geneid, sample, RPK) %>% 
+  spread(sample, RPK) %>% 
+  filter(RF_CDS_s1 !="NA",RF_CDS_s2 !="NA", RF_CDS_s3 !="NA", RF_CDS_s4 !="NA", RF_CDS_s5 !="NA",
+         RF_CDS_s6 !="NA", RF_CDS_s7 !="NA", RF_CDS_s8 !="NA", RF_CDS_s9 !="NA")
+
+#subset the data for uninfected versus infected 6 hr comparison
+RPK_early_infection <- RPK %>% 
+  dplyr::select(-RF_CDS_s7, -RF_CDS_s8, -RF_CDS_s9)
+
+#change sample names to include condition
+RPK_early_infection_rename <- RPK_early_infection %>%
+  dplyr::rename(mock.1= RF_CDS_s1, mock.2 = RF_CDS_s2, 
+                mock.3 =RF_CDS_s3, infect6h.4= RF_CDS_s4, 
+                infect6hr.5 = RF_CDS_s5, infect6hr.6 =RF_CDS_s6)
+
+#convert to count matrix
+RPK_early_infection_matrix <- RPK_early_infection_rename %>%
+  column_to_rownames("Geneid") %>% 
+  as.matrix()
+
+```
+
+```{r unnormalized  RPK "counts"}
+
+#Store the data in an object of S4 class SeqExpressionset from the EDAsEQ package so that normalization can be visualized
+x_RPK <- as.factor(rep(c("mock", "infect.6h"), each =3))
+set_RPK <- newSeqExpressionSet(as.matrix(RPK_early_infection_matrix),
+                           phenoData = data.frame(x_RPK, row.names=colnames(RPK_early_infection_matrix)))
+
+colors <- brewer.pal(3, "Set2")
+plotRLE(set_RPK, outline=FALSE, ylim=c(-4, 4), col=colors[x_RPK], cex.lab = 0.2)
+plotPCA(set_RPK, col=colors[x_RPK], cex=1)
 
 
 ```
+```{r  exploring variation in UQ normalized RPK count data}
+
+#Normalizing the data using upper-quartile (UQ) normalization
+set_RPK <- betweenLaneNormalization(set_RPK, which = "upper")
+plotRLE(set_RPK, outline=FALSE, ylim=c(-4, 4), col=colors[x_RPK])
+plotPCA(set_RPK, col=colors[x_RPK], cex=1)
+
+```
+
+```{r exploring the RPK "count" data with RUV normalisation }
+
+#To estimate the factors of unwanted variation, we are using mito genes as negative control genes. Assuming they're are not affected by SARSCOV2 infection
+class(set_RPK)
+class(mito_genes_chrV)
+
+set1_RPK <- RUVg(set_RPK,mito_genes_chrV, k=1 )
+pData(set1_RPK)
+
+plotRLE(set1_RPK, outline=FALSE, ylim=c(-4,4),col=colors[x_RPK])
+plotPCA(set1_RPK, col=colors[x_RPK], cex=1)
+
+```
+
+```{r Differential gene expression analysis for PRK counts}
+
+design <- model.matrix(~x_RPK + W_1, data=pData(set1_RPK))
+y <- DGEList(counts=counts(set1_RPK), group=x_RPK)
+y <- calcNormFactors(y, method="upperquartile")
+y <- estimateGLMCommonDisp(y, design)
+y <- estimateGLMTagwiseDisp(y, design)
+fit <- glmFit(y, design)
+lrt <- glmLRT(fit, coef=2)
+topTags(lrt)
+
+logFC_RPK <- topTags(lrt, n = 800, adjust.method = "BH", sort.by = "logFC", p.value = 0.05)
+
+logFC_RPK$table %>% 
+  as_tibble(rownames = "Geneid") %>% 
+  arrange((logFC))
+
+
+```
+
 
