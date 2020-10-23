@@ -1,0 +1,283 @@
+---
+title: "SARSCOV2_Translation_efficiency"
+author: "Marina Alexander"
+date: "23/10/2020"
+output:
+  pdf_document: default
+  html_document:
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+
+# remind R where to look for libraries
+.libPaths(c("C:/Users/ale097/Data School/Packages"))
+# load libraries
+library(dplyr)
+library(tidyverse)
+library(knitr)
+library(RUVSeq)
+library(RColorBrewer)
+
+
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.align = 'center'
+)
+```
+
+```{r}
+#read in the data
+RF_mRNA_raw <- read.csv("data/RF_mRNA_raw_counts.csv")
+
+#remove the viral genes from the analysis 
+RF_mRNA_raw_host <- RF_mRNA_raw %>%
+  dplyr::select(-X) %>% 
+  filter(str_detect(Geneid, "ENSG")) %>% 
+  select(-Chr)
+
+#obtain library sizes
+lib_size <- RF_mRNA_raw_host %>%
+  gather(sample, counts, -Geneid, -Length) %>% 
+  group_by(sample) %>% 
+  summarise(lib_size = sum(counts))
+
+#difference in smallest and biggest mRNA library 2-fold, no need for normalization 
+#difference in smallest and biggest ribosome library 5-fold, need to normalize
+```
+
+
+```{r}
+#obtaining filtered RPKM for mRNA counts
+mRNA_RPKM <- RF_mRNA_raw_host %>%
+  gather(sample, counts, -Geneid, -Length) %>% 
+  mutate(RPK = (counts/Length)*1000) %>%
+  left_join(lib_size, by ="sample") %>%
+  mutate(RPKM = (RPK/lib_size)*1000000) %>%
+  mutate(RPKM = round(RPK, digits = 0)) %>%
+  dplyr::select(Geneid, sample, RPKM) %>%
+  spread(sample, RPKM) %>%
+  dplyr::select(Geneid,mRNA_CDS_s1,
+                mRNA_CDS_s2,mRNA_CDS_s3,
+                mRNA_CDS_s4,mRNA_CDS_s5,
+                mRNA_CDS_s6,mRNA_CDS_s7,
+                mRNA_CDS_s8,mRNA_CDS_s9) %>% 
+  filter(mRNA_CDS_s1>5,mRNA_CDS_s2>5,mRNA_CDS_s3>5,
+         mRNA_CDS_s4>5,mRNA_CDS_s5>5,mRNA_CDS_s6>5,mRNA_CDS_s7>5,
+         mRNA_CDS_s8>5,mRNA_CDS_s9>5 )
+
+#subset the data for uninfected versus infected 6 hr comparison
+mRNA_RPKM_early_infection <- mRNA_RPKM  %>% 
+  dplyr::select(-mRNA_CDS_s7, -mRNA_CDS_s8, -mRNA_CDS_s9)
+
+#change sample names to include condition
+mRNA_RPKM_early_infection_rename <- mRNA_RPKM_early_infection %>%
+  dplyr::rename(m.mock.1=mRNA_CDS_s1, 
+                m.mock.2=mRNA_CDS_s2, 
+                m.mock.3=mRNA_CDS_s3, 
+                m.infect6h.4=mRNA_CDS_s4, 
+                m.infect6h.5=mRNA_CDS_s5, 
+                m.infect6h.6=mRNA_CDS_s6)
+
+```
+
+
+```{r}
+#Obtaining filtered UQ normalized RPKM for ribosome counts
+ribo_RPK <- RF_mRNA_raw_host %>%
+  gather(sample, counts, -Geneid, -Length) %>% 
+  mutate(RPK = (counts/Length)*1000) %>% 
+  mutate(RPK = round(RPK, digits = 0)) %>%
+  dplyr::select(Geneid, sample, RPK) %>%
+  spread(sample, RPK) %>%
+  dplyr::select(Geneid,RF_CDS_s1,
+                RF_CDS_s2,RF_CDS_s3,
+                RF_CDS_s4,RF_CDS_s5,
+                RF_CDS_s6,RF_CDS_s7,
+                RF_CDS_s8,RF_CDS_s9) %>% 
+  filter(RF_CDS_s1>0,RF_CDS_s2>0,RF_CDS_s3>0,
+         RF_CDS_s4>0,RF_CDS_s5>0,RF_CDS_s6>0,RF_CDS_s7>0,
+         RF_CDS_s8>0,RF_CDS_s9>0 )
+
+#subset the data for uninfected versus infected 6 hr comparison
+ribo_RPK_early_infection <- ribo_RPK  %>% 
+  dplyr::select(-RF_CDS_s7, -RF_CDS_s8, -RF_CDS_s9)
+
+#change sample names to include condition
+RPK_early_infection_rename <- ribo_RPK_early_infection %>%
+  dplyr::rename(r.mock.1=RF_CDS_s1, 
+                r.mock.2=RF_CDS_s2, 
+                r.mock.3=RF_CDS_s3, 
+                r.infect6h.4=RF_CDS_s4, 
+                r.infect6h.5=RF_CDS_s5, 
+                r.infect6h.6=RF_CDS_s6)
+
+#convert to count matrix
+ribo_RPK_early_infection_matrix <- RPK_early_infection_rename %>%
+  column_to_rownames("Geneid") %>% 
+  as.matrix()
+
+#Store the data in an object of S4 class SeqExpressionset from the EDAsEQ package so that normalization can be visualized
+design <- as.factor(rep(c("mock", "infect.6h"), each =3))
+set <- newSeqExpressionSet(as.matrix(ribo_RPK_early_infection_matrix),
+                           phenoData = data.frame(design, row.names=colnames(ribo_RPK_early_infection_matrix)))
+
+colors <- brewer.pal(3, "Set2")
+plotRLE(set, outline=FALSE, ylim=c(-4, 4), col=colors[design], cex.lab = 0.2)
+plotPCA(set, col=colors[design], cex=1)
+
+#Normalizing the data using upper-quartile (UQ) normalization
+set_UQnorm <- betweenLaneNormalization(set, which = "upper")
+plotRLE(set_UQnorm, outline=FALSE, ylim=c(-4, 4), col=colors[design])
+plotPCA(set_UQnorm, col=colors[design], cex=1)
+
+ribo_RPKM.norm <- normCounts(set_UQnorm) %>% 
+  as_tibble(rownames = "Geneid") %>% 
+  filter(r.mock.1>5,
+         r.mock.2>5,
+         r.mock.3>5,
+         r.infect6h.4>5, 
+         r.infect6h.5>5,
+         r.infect6h.6>5)
+
+```
+
+
+```{r}
+#calculating translation efficiency
+TE_counts <- left_join(ribo_RPKM.norm,mRNA_RPKM_early_infection_rename, by = "Geneid" ) %>% 
+  mutate(te.mock.1 = r.mock.1/m.mock.1,
+         te.mock.2 = r.mock.2/m.mock.2,
+         te.mock.3 = r.mock.3/m.mock.3,
+         te.infect6h.4 =r.infect6h.4/m.infect6h.4,
+         te.infect6h.5 =r.infect6h.5/m.infect6h.5,
+         te.infect6h.6 =r.infect6h.6/m.infect6h.6) %>% 
+  dplyr::select(Geneid, te.mock.1, te.mock.2, te.mock.3,te.infect6h.4, te.infect6h.5, te.infect6h.6 )
+```
+
+
+```{r}
+#exploring the distribution of TE across all genes for all samples
+plot_TE_dist <- TE_counts %>% 
+  gather(sample, ribo.mRNA_ratio, -Geneid) %>%
+  filter(ribo.mRNA_ratio<10&ribo.mRNA_ratio>0.01) %>%
+  ggplot(aes(x=ribo.mRNA_ratio, color = sample))+
+  geom_density()+
+  scale_x_log10()+
+  geom_vline(aes(xintercept=median(ribo.mRNA_ratio)), linetype="dashed")+
+  labs(x = "Translation efficiency\n (ribosome density/mRNA density)" )
+ggsave(filename = "results/plot_TE_dist.png", plot = plot_TE_dist, width = 15, height = 15, dpi = 300, units = "cm")
+```
+
+
+```{r}
+#exploring shifts in TE across conditions 
+TE_mock <- TE_counts %>% 
+  gather(sample, ribo.mRNA_ratio, -Geneid) %>%
+  separate(sample, c("measure", "condition", "rep")) %>%
+  filter(condition == "mock") %>% 
+  dplyr::select(Geneid,ribo.mRNA_ratio ) %>% 
+  dplyr::rename(ribo.mRNA_ratio_mock= ribo.mRNA_ratio)
+
+TE_infect <- TE_counts %>% 
+  gather(sample, ribo.mRNA_ratio, -Geneid) %>%
+  separate(sample, c("measure", "condition", "rep")) %>%
+  filter(condition == "infect6h") %>% 
+  dplyr::select(Geneid,ribo.mRNA_ratio ) %>% 
+  dplyr::rename(ribo.mRNA_ratio_infect6h= ribo.mRNA_ratio)
+
+#bringing in innate immune genes that are upregulated on infection
+immune_genes <- read.csv("data/InnateDB_genes.csv") %>% 
+  filter(species == "Homo sapiens") %>%
+  dplyr::rename(Geneid = ensembl) %>%
+  dplyr::select(Geneid, name, function.)
+
+positive_DE_genes <- read.csv("data/SARSCOV2_DEgenes_Calu3_24hrs.csv") %>%
+  filter(log2FoldChange > 1) %>% 
+  dplyr::rename(name = gene) %>% 
+  dplyr::select(name)
+
+upregulated_immune_genes <- left_join(positive_DE_genes,immune_genes, by = "name"  ) %>% 
+  filter(Geneid != "NA")
+
+TE_condition <- bind_cols(TE_mock,TE_infect) %>%
+  filter(ribo.mRNA_ratio<10&ribo.mRNA_ratio>0.01) %>% 
+  mutate(Geneid_stable = gsub("\\.\\d+$","", Geneid)) %>%
+  mutate(Geneid_stable = str_replace_all(Geneid_stable, c("ENSG00000119922" = "IFIT2",
+                                            "ENSG00000111335" = "OAS2",
+                                            "ENSG00000119917" = "IFIT3",
+                                            "ENSG00000100906" = "NFKBIA",
+                                            "ENSG00000134321" = "RSAD2",
+                                            "ENSG00000177606" = "JUN",
+                                            "ENSG00000111331" = "OAS3",
+                                            "ENSG00000115267" = "IFIH1",
+                                            "ENSG00000185745" = "IFIT1",
+                                            "ENSG00000162772" = "ATF3",
+                                            "ENSG00000121858" = "TNFSF10",
+                                            "ENSG00000055332" = "EIF2AK2",
+                                            "ENSG00000125347" = "IRF1",
+                                            "ENSG00000265972" = "TXNIP",
+                                            "ENSG00000136244" = "IL6",
+                                            "ENSG00000120738" = "EGR1",
+                                            "ENSG00000183486" = "MX2",
+                                            "ENSG00000107201" = "DDX58",
+                                            "ENSG00000118503" = "TNFAIP3",
+                                            "ENSG00000089127" = "OAS1",
+                                            "ENSG00000137628" = "DDX60",
+                                            "ENSG00000138646" = "HERC5",
+                                            "ENSG00000152778" = "IFIT5",
+                                            "ENSG00000170345" = "FOS",
+                                            "ENSG00000157601" = "MX1",
+                                            "ENSG00000185885" = "IFITM1",
+                                            "ENSG00000169248" = "CXCL11",
+                                            "ENSG00000132274" = "TRIM22",
+                                            "ENSG00000184371" = "CSF1",
+                                            "ENSG00000120217" = "CD274",
+                                            "ENSG00000271503" = "CCL5",
+                                            "ENSG00000169245" = "CXCL10",
+                                            "ENSG00000162924" = "REL",
+                                            "ENSG00000164342" = "TLR3",
+                                            "ENSG00000163661" = "PTX3",
+                                            "ENSG00000056558" = "TRAF1",
+                                            "ENSG00000185499" = "MUC1"))) %>% 
+  arrange(Geneid_stable)
+highlight <- TE_condition %>% 
+  filter(!str_detect(Geneid, "ENSG")) %>% 
+  unique()
+                                            
+plot_TE_condition <- ggplot(TE_condition, aes(x= ribo.mRNA_ratio_mock, y=ribo.mRNA_ratio_infect6h ))+
+  geom_point(alpha = 0.2 )+
+  xlim(0.01, 10)+
+  ylim(0.01, 10)+
+  geom_abline(color = "red", linetype = "dashed")+
+    geom_text(data = highlight, aes(x = ribo.mRNA_ratio_mock, y = ribo.mRNA_ratio_infect6h, label = Geneid), 
+             hjust = 0.5, vjust = -0.5, size = 4, check_overlap=TRUE)+
+  labs(x =  "Mock translation efficiency\n (ribosome density/mRNA density)",
+       y =  "Infected translation efficiency\n (ribosome density/mRNA density)")
+ggsave(filename = "results/plot_TE_condition.png", plot = plot_TE_condition, width = 15, height = 15, dpi = 300, units = "cm")
+
+plot_TE_condition_zoom <- ggplot(TE_condition, aes(x= ribo.mRNA_ratio_mock, y=ribo.mRNA_ratio_infect6h ))+
+  geom_point(alpha = 0.05 )+
+  xlim(0.01, 1.5)+
+  ylim(0.01, 1.5)+
+  geom_abline(color = "red", linetype = "dashed")+
+  geom_text(data = highlight, aes(x = ribo.mRNA_ratio_mock, y = ribo.mRNA_ratio_infect6h, label = Geneid), 
+             hjust = 0.5, vjust = -0.5, size = 3, check_overlap=TRUE, color = "red")+
+  labs(x =  "Mock translation efficiency\n (ribosome density/mRNA density)",
+       y =  "Infected translation efficiency\n (ribosome density/mRNA density)")
+ggsave(filename = "results/plot_TE_condition_zoom.png", plot = plot_TE_condition_zoom, width = 15, height = 15, dpi = 300, units = "cm")
+```
+
+
+```{r}
+
+#Differential gene expression
+TE_counts_filtered <- TE_counts %>% 
+  gather(sample, ribo.mRNA_ratio, -Geneid) %>%
+  filter(ribo.mRNA_ratio<10&ribo.mRNA_ratio>0.01)
+
+
+```
+
