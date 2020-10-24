@@ -1,0 +1,125 @@
+---
+title: "SARSCOV2_Translation_efficiency"
+author: "Marina Alexander"
+date: "23/10/2020"
+output:
+  pdf_document: default
+  html_document:
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+
+# remind R where to look for libraries
+.libPaths(c("C:/Users/ale097/Data School/Packages"))
+# load libraries
+library(dplyr)
+library(tidyverse)
+library(knitr)
+library(RUVSeq)
+library(RColorBrewer)
+
+
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.align = 'center'
+)
+```
+
+```{r}
+#read in the data
+RF_mRNA_raw <- read.csv("data/RF_mRNA_raw_counts.csv")
+
+#select the viral genes for the analysis 
+RF_mRNA_raw_virus <- RF_mRNA_raw %>%
+  dplyr::select(-X) %>% 
+  filter(!str_detect(Geneid, "ENSG")) %>% 
+  select(-Chr)
+
+#obtain library sizes
+lib_size <- RF_mRNA_raw_virus %>%
+  gather(sample, counts, -Geneid, -Length) %>% 
+  group_by(sample) %>% 
+  summarise(lib_size = sum(counts))
+
+#difference in smallest and biggest mRNA library 2-fold, no need for normalization 
+#difference in smallest and biggest ribosome library 5-fold, need to normalize
+```
+
+
+```{r}
+#obtaining filtered RPKM for mRNA counts
+mRNA_RPKM <- RF_mRNA_raw_virus %>%
+  gather(sample, counts, -Geneid, -Length) %>% 
+  mutate(RPK = (counts/Length)*1000) %>%
+  left_join(lib_size, by ="sample") %>%
+  mutate(RPKM = (RPK/lib_size)*1000000) %>%
+  mutate(RPKM = round(RPK, digits = 0)) %>%
+  dplyr::select(Geneid, sample, RPKM) %>%
+  spread(sample, RPKM) %>%
+  dplyr::select(Geneid,
+                mRNA_CDS_s4,mRNA_CDS_s5,
+                mRNA_CDS_s6,mRNA_CDS_s7,
+                mRNA_CDS_s8,mRNA_CDS_s9) %>% 
+  filter(mRNA_CDS_s4>5,mRNA_CDS_s5>5,mRNA_CDS_s6>5,mRNA_CDS_s7>5,
+         mRNA_CDS_s8>5,mRNA_CDS_s9>5)
+
+```
+
+
+```{r}
+#Obtaining RPKM for ribosome counts
+ribo_RPK <- RF_mRNA_raw_host %>%
+  gather(sample, counts, -Geneid, -Length) %>% 
+  mutate(RPK = (counts/Length)*1000) %>% 
+  mutate(RPK = round(RPK, digits = 0)) %>%
+  dplyr::select(Geneid, sample, RPK) %>%
+  spread(sample, RPK) %>%
+  dplyr::select(Geneid,
+                RF_CDS_s4,RF_CDS_s5,
+                RF_CDS_s6,RF_CDS_s7,
+                RF_CDS_s8,RF_CDS_s9) %>% 
+  filter(RF_CDS_s4>0,RF_CDS_s5>0,RF_CDS_s6>0,RF_CDS_s7>0,
+         RF_CDS_s8>0,RF_CDS_s9>0 )
+
+
+```
+
+
+```{r}
+#calculating translation efficiency
+TE_counts <- left_join(ribo_RPK,mRNA_RPKM, by = "Geneid" ) %>% 
+  mutate(te.s4 = RF_CDS_s4/mRNA_CDS_s4,
+         te.s5 = RF_CDS_s5/mRNA_CDS_s5,
+         te.s6 = RF_CDS_s6/mRNA_CDS_s6,
+         te.s7 = RF_CDS_s7/mRNA_CDS_s7,
+         te.s8 = RF_CDS_s8/mRNA_CDS_s8,
+         te.s9 = RF_CDS_s9/mRNA_CDS_s9) %>% 
+  dplyr::select(Geneid, te.s4, te.s5, te.s6,te.s7, te.s8, te.s9 ) %>% 
+  dplyr::rename(te.s4.6hr=te.s4, 
+                te.s5.6hr=te.s5,
+                te.s6.6hr=te.s6,
+                te.s7.24hr=te.s7,
+                te.s8.24hr=te.s8,
+                te.s9.24hr=te.s9) %>% 
+  gather(sample, TE, -Geneid) %>% 
+  separate(sample, c("measure", "sample", "timepoint"))
+
+TE_counts$timepoint <- factor(TE_counts$timepoint,levels =c("6hr", "24hr"))
+TE_counts$Geneid <- factor(TE_counts$Geneid,levels =c("ORF1ab", "S", "ORF3a", "ORF3b", "E", "M", "ORF6", "ORF7a", "ORF7b", "ORF8", "N", "ORF10"))
+
+plot_virus_translation <- ggplot(TE_counts, aes(x= timepoint, y = TE, color = Geneid))+
+  geom_boxplot()+
+  labs(title = "Translation efficiency of viral ORFs",
+       y = "Translation efficiency \n (ribosome RPKM/mRNA RPKM)")+
+  theme(legend.position = "bottom",
+        legend.text=element_text(size =8),
+        legend.title = element_blank())+
+  guides(color =guide_legend(nrow=1))
+
+ggsave(filename = "results/plot_virus_translation.png", plot = plot_virus_translation, width = 20, height = 10, dpi = 600, units = "cm")
+
+```
+
