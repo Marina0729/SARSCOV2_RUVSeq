@@ -69,17 +69,17 @@ mRNA_RPKM <- RF_mRNA_raw_host %>%
          mRNA_CDS_s8>5,mRNA_CDS_s9>5 )
 
 #subset the data for uninfected versus infected 6 hr comparison
-mRNA_RPKM_early_infection <- mRNA_RPKM  %>% 
-  dplyr::select(-mRNA_CDS_s7, -mRNA_CDS_s8, -mRNA_CDS_s9)
+mRNA_RPKM_late_infection <- mRNA_RPKM  %>% 
+  dplyr::select(-mRNA_CDS_s4, -mRNA_CDS_s5, -mRNA_CDS_s6)
 
 #change sample names to include condition
-mRNA_RPKM_early_infection_rename <- mRNA_RPKM_early_infection %>%
+mRNA_RPKM_late_infection_rename <- mRNA_RPKM_late_infection %>%
   dplyr::rename(m.mock.1=mRNA_CDS_s1, 
                 m.mock.2=mRNA_CDS_s2, 
                 m.mock.3=mRNA_CDS_s3, 
-                m.infect6h.4=mRNA_CDS_s4, 
-                m.infect6h.5=mRNA_CDS_s5, 
-                m.infect6h.6=mRNA_CDS_s6)
+                m.infect24h.7=mRNA_CDS_s7, 
+                m.infect24h.8=mRNA_CDS_s8, 
+                m.infect24h.9=mRNA_CDS_s9)
 
 ```
 
@@ -102,27 +102,27 @@ ribo_RPK <- RF_mRNA_raw_host %>%
          RF_CDS_s8>0,RF_CDS_s9>0 )
 
 #subset the data for uninfected versus infected 6 hr comparison
-ribo_RPK_early_infection <- ribo_RPK  %>% 
-  dplyr::select(-RF_CDS_s7, -RF_CDS_s8, -RF_CDS_s9)
+ribo_RPK_late_infection <- ribo_RPK  %>% 
+  dplyr::select(-RF_CDS_s4, -RF_CDS_s5, -RF_CDS_s6)
 
 #change sample names to include condition
-RPK_early_infection_rename <- ribo_RPK_early_infection %>%
+RPK_late_infection_rename <- ribo_RPK_late_infection %>%
   dplyr::rename(r.mock.1=RF_CDS_s1, 
                 r.mock.2=RF_CDS_s2, 
                 r.mock.3=RF_CDS_s3, 
-                r.infect6h.4=RF_CDS_s4, 
-                r.infect6h.5=RF_CDS_s5, 
-                r.infect6h.6=RF_CDS_s6)
+                r.infect24h.7=RF_CDS_s7, 
+                r.infect24h.8=RF_CDS_s8, 
+                r.infect24h.9=RF_CDS_s9)
 
 #convert to count matrix
-ribo_RPK_early_infection_matrix <- RPK_early_infection_rename %>%
+ribo_RPK_late_infection_matrix <- RPK_late_infection_rename %>%
   column_to_rownames("Geneid") %>% 
   as.matrix()
 
 #Store the data in an object of S4 class SeqExpressionset from the EDAsEQ package so that normalization can be visualized
-design <- as.factor(rep(c("mock", "infect.6h"), each =3))
-set <- newSeqExpressionSet(as.matrix(ribo_RPK_early_infection_matrix),
-                           phenoData = data.frame(design, row.names=colnames(ribo_RPK_early_infection_matrix)))
+design <- as.factor(rep(c("mock", "infect.24h"), each =3))
+set <- newSeqExpressionSet(as.matrix(ribo_RPK_late_infection_matrix),
+                           phenoData = data.frame(design, row.names=colnames(ribo_RPK_late_infection_matrix)))
 
 colors <- brewer.pal(3, "Set2")
 plotRLE(set, outline=FALSE, ylim=c(-4, 4), col=colors[design], cex.lab = 0.2)
@@ -138,23 +138,23 @@ ribo_RPKM.norm <- normCounts(set_UQnorm) %>%
   filter(r.mock.1>5,
          r.mock.2>5,
          r.mock.3>5,
-         r.infect6h.4>5, 
-         r.infect6h.5>5,
-         r.infect6h.6>5)
+         r.infect24h.7>5, 
+         r.infect24h.8>5,
+         r.infect24h.9>5)
 
 ```
 
 
 ```{r}
 #calculating translation efficiency
-TE_counts <- left_join(ribo_RPKM.norm,mRNA_RPKM_early_infection_rename, by = "Geneid" ) %>% 
+TE_counts <- left_join(ribo_RPKM.norm,mRNA_RPKM_late_infection_rename, by = "Geneid" ) %>% 
   mutate(te.mock.1 = r.mock.1/m.mock.1,
          te.mock.2 = r.mock.2/m.mock.2,
          te.mock.3 = r.mock.3/m.mock.3,
-         te.infect6h.4 =r.infect6h.4/m.infect6h.4,
-         te.infect6h.5 =r.infect6h.5/m.infect6h.5,
-         te.infect6h.6 =r.infect6h.6/m.infect6h.6) %>% 
-  dplyr::select(Geneid, te.mock.1, te.mock.2, te.mock.3,te.infect6h.4, te.infect6h.5, te.infect6h.6 )
+         te.infect24h.7 =r.infect24h.7/m.infect24h.7,
+         te.infect24h.8 =r.infect24h.8/m.infect24h.8,
+         te.infect24h.9 =r.infect24h.9/m.infect24h.9) %>% 
+  dplyr::select(Geneid, te.mock.1, te.mock.2, te.mock.3,te.infect24h.7, te.infect24h.8, te.infect24h.9 )
 ```
 
 
@@ -168,7 +168,7 @@ plot_TE_dist <- TE_counts %>%
   scale_x_log10()+
   geom_vline(aes(xintercept=median(ribo.mRNA_ratio)), linetype="dashed")+
   labs(x = "Translation efficiency\n (ribosome density/mRNA density)" )
-ggsave(filename = "results/plot_TE_dist.png", plot = plot_TE_dist, width = 15, height = 15, dpi = 300, units = "cm")
+ggsave(filename = "results/plot_TE_dist_24.png", plot = plot_TE_dist, width = 15, height = 15, dpi = 300, units = "cm")
 ```
 
 
@@ -184,9 +184,9 @@ TE_mock <- TE_counts %>%
 TE_infect <- TE_counts %>% 
   gather(sample, ribo.mRNA_ratio, -Geneid) %>%
   separate(sample, c("measure", "condition", "rep")) %>%
-  filter(condition == "infect6h") %>% 
+  filter(condition == "infect24h") %>% 
   dplyr::select(Geneid,ribo.mRNA_ratio ) %>% 
-  dplyr::rename(ribo.mRNA_ratio_infect6h= ribo.mRNA_ratio)
+  dplyr::rename(ribo.mRNA_ratio_infect24h= ribo.mRNA_ratio)
 
 #bringing in innate immune genes that are upregulated on infection
 immune_genes <- read.csv("data/InnateDB_genes.csv") %>% 
@@ -248,16 +248,16 @@ TE_condition <- bind_cols(TE_mock,TE_infect) %>%
 highlight <- TE_condition %>% 
   filter(!str_detect(Geneid_stable, "ENSG"))
                                             
-plot_TE_condition_zoom <- ggplot(TE_condition, aes(x= ribo.mRNA_ratio_mock, y=ribo.mRNA_ratio_infect6h ))+
+plot_TE_condition_zoom <- ggplot(TE_condition, aes(x= ribo.mRNA_ratio_mock, y=ribo.mRNA_ratio_infect24h ))+
   geom_point(alpha = 0.05 )+
   xlim(0.01, 1.5)+
   ylim(0.01, 1.5)+
   geom_abline(color = "red", linetype = "dashed")+
-  geom_text(data = highlight, aes(x = ribo.mRNA_ratio_mock, y = ribo.mRNA_ratio_infect6h, label = Geneid_stable), 
+  geom_text(data = highlight, aes(x = ribo.mRNA_ratio_mock, y = ribo.mRNA_ratio_infect24h, label = Geneid_stable), 
              hjust = 0.5, vjust = -0.5, size = 3, check_overlap=TRUE, color = "red")+
   labs(x =  "Mock translation efficiency\n (ribosome density/mRNA density)",
        y =  "Infected translation efficiency\n (ribosome density/mRNA density)")
-ggsave(filename = "results/plot_TE_condition_zoom.png", plot = plot_TE_condition_zoom, width = 15, height = 15, dpi = 300, units = "cm")
+ggsave(filename = "results/plot_TE_condition_zoom_24.png", plot = plot_TE_condition_zoom, width = 15, height = 15, dpi = 300, units = "cm")
 ```
 
 
@@ -270,15 +270,15 @@ TE_filtered <- TE_counts %>%
   filter(te.mock.1>0.01&te.mock.1<15,
          te.mock.2>0.01&te.mock.2<15,
          te.mock.3>0.01&te.mock.3<15,
-         te.infect6h.4>0.01&te.infect6h.4<15,
-         te.infect6h.5>0.01&te.infect6h.5<15,
-         te.infect6h.6>0.01&te.infect6h.6<15) %>%
-  filter(te.mock.1!="NA",te.mock.2!="NA",te.mock.3!="NA",te.infect6h.4!="NA",te.infect6h.5!="NA",te.infect6h.6!="NA" ) %>% 
+         te.infect24h.7>0.01&te.infect24h.7<15,
+         te.infect24h.8>0.01&te.infect24h.8<15,
+         te.infect24h.9>0.01&te.infect24h.9<15) %>%
+  filter(te.mock.1!="NA",te.mock.2!="NA",te.mock.3!="NA",te.infect24h.7!="NA",te.infect24h.8!="NA",te.infect24h.9!="NA" ) %>% 
   column_to_rownames("Geneid") %>% 
   as.matrix()
 
 #creating the objects for modelling
-metadata <- read.csv("data/te_metadata.csv")
+metadata <- read.csv("data/te_metadata_24.csv")
 design <- model.matrix(~ condition, data = metadata)
 dge <- DGEList(counts =TE_filtered, samples = design)
 log_dge <- cpm(dge, log=TRUE)
@@ -286,7 +286,7 @@ log_dge <- cpm(dge, log=TRUE)
 #modelling
 fit <- lmFit(log_dge, design)
 fit <- eBayes(fit, trend=TRUE)
-topTable(fit, number = 7667, sort.by = "logFC", p.value = 0.05, lfc = 0.5 )
+topTable(fit, number = 5732, sort.by = "logFC", p.value = 0.06, lfc = 0.5 )
 
 
 ```
@@ -295,17 +295,13 @@ topTable(fit, number = 7667, sort.by = "logFC", p.value = 0.05, lfc = 0.5 )
 
 #plotting the fold change for 9,838 genes put into the analysis
 
-FC_TE <- topTable(fit, number = 9838,sort.by = "logFC" ) %>% 
+FC_TE <- topTable(fit, number = 5732,sort.by = "logFC" ) %>% 
   as_tibble(rownames = "Geneid") %>% 
   mutate(FC = 2^(logFC)) %>%
-  mutate(Geneid = str_replace_all(Geneid, c("ENSG00000177076.6"="ACER2",
-                                            "ENSG00000155287.11"="SLC25A28",
-                                            "ENSG00000152439.13" = "ZNF773",
-                                            "ENSG00000142408.5" = "CACNG8",
-                                            "ENSG00000146955.11" = "RAB19",
-                                            "ENSG00000157823.17" = "AP3S2",
-                                            "ENSG00000221823.11" = "PPP3R1",
-                                            "ENSG00000221963.6" = "APOL6")))
+  mutate(Geneid = str_replace_all(Geneid, c("ENSG00000082805.20"="ERC1",
+                                            "ENSG00000196890.4"="H2BU1",
+                                            "ENSG00000197714.9"="ZNF460",
+                                            "ENSG00000221963.6"="APOL6")))
 
 highlight_FC <- FC_TE  %>%
   filter(!str_detect(Geneid, "ENSG"))
@@ -323,111 +319,12 @@ plot_volcano_TE <- EnhancedVolcano(FC_TE,
     y = "adj.P.Val",
     xlim = c(-1.5, 1.5),
     ylim = c(0, 3),
-    title = "Uninfected versus infected 6hr",
+    title = "Uninfected versus infected 24hr",
     caption = "FC cutoff, 1.414; adjusted p-value cutoff, 0.05",
     FCcutoff = 0.5,
     pCutoff = 0.05)
 
-ggsave(filename = "results/plot_volcano_TE.png", plot = plot_volcano_TE, width = 15, height = 15, dpi = 300, units = "cm")
-
-```
-
-
-```{r}
-
-#Differential gene expression of mRNA
-TE_filtered_tibble <- TE_filtered %>% 
-  as_tibble(rownames = "Geneid")
-
-mRNA_filtered <- left_join(TE_filtered_tibble, mRNA_RPKM_early_infection_rename, by = "Geneid")  %>%
-  dplyr::select(Geneid, m.mock.1, m.mock.2, m.mock.3, m.infect6h.4, m.infect6h.5, m.infect6h.6) %>% 
-  column_to_rownames("Geneid") %>% 
-  as.matrix()
-
-#creating the objects for modelling
-metadata <- read.csv("data/te_metadata.csv")
-design <- model.matrix(~ condition, data = metadata)
-dge_m <- DGEList(counts =mRNA_filtered , samples = design)
-log_dge_m <- cpm(dge_m, log=TRUE)
-
-#modelling
-fit_m <- lmFit(log_dge_m, design)
-fit_m <- eBayes(fit_m, trend=TRUE)
-topTable(fit_m, number = 9838, sort.by = "logFC", p.value = 0.05, lfc = 1 )
-
-
-
-```
-
-```{r}
-#plotting TE against mRNA log2FC 
-
-FC_mRNA <- topTable(fit_m, number = 9838, sort.by = "logFC") %>% 
-  as_tibble(rownames = "Geneid") %>%
-  dplyr::rename(logFC.m = logFC) %>%
-  mutate(Geneid = str_replace_all(Geneid, c("ENSG00000177076.6"="ACER2",
-                                            "ENSG00000155287.11"="SLC25A28",
-                                            "ENSG00000152439.13" = "ZNF773",
-                                            "ENSG00000142408.5" = "CACNG8",
-                                            "ENSG00000146955.11" = "RAB19",
-                                            "ENSG00000157823.17" = "AP3S2",
-                                            "ENSG00000221823.11" = "PPP3R1",
-                                            "ENSG00000221963.6" = "APOL6",
-                                            "ENSG00000197632.9"= "SERPINB2",
-                                            "ENSG00000130513.6" = "GDF15",
-                                            "ENSG00000138061.12" = "CYP1B1",
-                                            "ENSG00000265972.6" = "TXNIP",
-                                            "ENSG00000140450.9" = "ARRDC4",
-                                            "ENSG00000162496.9" = "DHRS3",
-                                            "ENSG00000205502.4" = "C2CD4B",
-                                            "ENSG00000115009.13" = "CCL20",
-                                            "ENSG00000019186.10" = "CYP24A1"))) %>%
-  dplyr::select(Geneid,logFC.m)
-
-FC_TE_mRNA_rename <- FC_TE %>% 
-  dplyr::rename(logFC.t = logFC) %>%
-  mutate(Geneid = str_replace_all(Geneid, c("ENSG00000197632.9"= "SERPINB2",
-                                            "ENSG00000130513.6" = "GDF15",
-                                            "ENSG00000138061.12" = "CYP1B1",
-                                            "ENSG00000265972.6" = "TXNIP",
-                                            "ENSG00000140450.9" = "ARRDC4",
-                                            "ENSG00000162496.9" = "DHRS3",
-                                            "ENSG00000205502.4" = "C2CD4B",
-                                            "ENSG00000115009.13" = "CCL20",
-                                            "ENSG00000019186.10" = "CYP24A1"))) %>%
-  dplyr::select(Geneid, logFC.t) %>% 
-  left_join(FC_mRNA, by = "Geneid")
-
-interest <- FC_TE_mRNA_rename %>% 
-  filter(logFC.m >0&logFC.m<1) %>%
-  filter(logFC.t<(-0.32))
-  
-
-highlight_FC <- FC_TE_mRNA_rename  %>%
-  filter(!str_detect(Geneid, "ENSG"))
-
-plot_mRNA.TE <- ggplot(FC_TE_mRNA_rename, aes(x= logFC.m, y = logFC.t ))+
-  geom_point(alpha = 0.2)+
-  geom_text(data = highlight_FC, aes(x = logFC.m, y = logFC.t, label = Geneid), 
-             hjust = 0.5, vjust = 0.5, size = 3, check_overlap=TRUE, color = "red")+
-  ylim(-1.5, 1.5)+
-  geom_vline(xintercept = 0, color = "blue", linetype = "dashed")+
-  geom_hline(yintercept = 0, color = "blue", linetype = "dashed")+
-  labs(x= "log2FC(transcription)",
-       y = "log2FC(translation)",
-       title = "Uninfected versus infected 6hrs")
-
-ggsave(filename = "results/plot_mRNA.TE.png", plot = plot_mRNA.TE, width = 15, height = 15, dpi = 300, units = "cm")
-  
-  
-  
-```
-
-```{r}
-
-topTable(fit_m, number = 9838, sort.by = "logFC") %>% 
-  as_tibble(rownames = "Geneid") %>% 
-  filter(Geneid == "ENSG00000177076.6")
+ggsave(filename = "results/plot_volcano_TE_24.png", plot = plot_volcano_TE, width = 15, height = 15, dpi = 300, units = "cm")
 
 ```
 
